@@ -1,0 +1,300 @@
+/* File 1 - CollisionController 
+Handles all the collision and sets interfaces for hit and hurt boxes
+sets interfaces for responders
+*/
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+///  HitData is the data included to be sent to responders
+/// </summary>
+public class HitData
+{
+    // Data objects
+    // TODO: Add more possible datas
+    public int damage; // How much damager
+    public IHurtbox hurtBox; // Which hurt box was detected
+    public IHitDetector hitDetector; // 
+
+    public bool Validate()
+    {
+        // Can be changed to be more flexible 
+        if(hurtBox != null)      
+            if(hurtBox.Checkhit(this))           
+                if(hurtBox.hurtResponder == null || hurtBox.hurtResponder.CheckHit(this))               
+                    if (hitDetector.hitResponder == null || hitDetector.hitResponder.CheckHit(this))
+                        return true;
+        return false;
+    }
+}
+
+// Is attached to Hit boxes to communicate to hurtboxes
+public interface IHitResponder
+{
+    int Damage { get; }
+    // Validates hit data
+    public bool CheckHit(HitData hitData);
+    // Respond to hit
+    public void Response(HitData hitData);
+}
+
+// Is attached to 
+public interface IHitDetector
+{
+
+    public IHitResponder hitResponder { get; set; }
+    public void CheckHit();
+}
+
+public interface IHurtResponder
+{
+    public bool CheckHit(HitData hitData);
+    
+    public void Response(HitData hitData);
+}
+
+
+public interface IHurtbox
+{
+    public bool Active { get; }
+    
+    // Find owner: may have multiple hurtboxes
+    public GameObject Owner { get; }
+
+    // Determine where the hurtbox is
+    public Transform Transform { get; }
+    public IHurtResponder hurtResponder { get; set; }
+    public bool Checkhit(HitData hitData);
+
+}
+
+/* File 2 Hitbox.cs */
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+/// <summary>
+/// Hit box takes in hit data from hurtboxes
+/// </summary>
+public class Hitbox : MonoBehaviour, IHitDetector
+{
+    [SerializeField] private Collider2D m_collider;
+    [SerializeField] private LayerMask m_layerMask;
+    private Collider2D hit;
+
+    private float m_thickness = 0.025f;
+    private IHitResponder m_hitResponder;
+
+    public IHitResponder hitResponder { get => m_hitResponder; set => m_hitResponder = value; }
+
+    /// <summary>
+    /// Using OnCollisionEnter2D for bullet projectile as it's animation may not collide with anything 
+    /// therefore we only need to CheckHit if collision is detected first.
+    /// </summary>
+    /// <param name="collision"> object bullet collided with </param>
+    private void OnCollisionEnter2D(Collision2D collision)
+    {
+        print("Collided with " + collision.gameObject.name);
+        CheckHit();
+    }
+    private void OnTriggerEnter2D(Collider2D collision)
+    {
+        print("Collided with " + collision.gameObject.name);
+        hit = collision;
+        CheckHit();
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    public void CheckHit()
+    {
+        //Vector2 m_startSize = this.transform.position;
+
+        //// The size of the box collider on the gameobject
+        ////Vector2 _scaledSize = new Vector2(
+        ////    m_collider.size.x * transform.localScale.x,
+        ////    m_collider.size.y * transform.localScale.y);
+
+
+        ////float _distance = _scaledSize.y - m_thickness;
+        ////float _direction = Vector2.Angle(m_startSize, _scaledSize);
+
+        ////Vector2 _center = m_collider.offset;
+        ////Vector2 _start = m_collider.offset - (_scaledSize / 2);
+        ////Vector2 _halfExtent = new Vector2(_scaledSize.x, m_thickness) / 2;
+        ////Quaternion _orientation = transform.rotation;
+
+        HitData _hitData = null;
+        IHurtbox _hurtbox = null;
+
+        //print("Casting Box");
+        //RaycastHit2D[] _hits = Physics2D.BoxCastAll(
+        //    m_collider.bounds.center,
+        //    m_collider.bounds.size,
+        //    0f,
+        //    Vector2.up,
+        //    m_thickness,
+        //    m_layerMask);
+
+        _hurtbox = hit.GetComponent<IHurtbox>();
+        if(m_hitResponder != null)
+        {
+            Debug.Log("Hit " + hit.name);
+            if(_hurtbox.Active)
+            {
+                // Generate HitData
+                _hitData = new HitData
+                {
+                    damage = m_hitResponder == null ? 0 : m_hitResponder.Damage,
+                    hurtBox = _hurtbox,
+                    hitDetector = this
+                };
+
+                // Validate a response
+                if (_hitData.Validate())
+                {
+                    _hitData.hitDetector.hitResponder?.Response(_hitData);
+                    _hitData.hurtBox.hurtResponder?.Response(_hitData);
+                }
+            }
+        }
+        // Melee weapon collision check
+        //foreach (RaycastHit2D _hit in _hits)
+        //{
+        //    _hurtbox = _hit.collider.GetComponent<IHurtbox>();
+        //    if (_hurtbox != null)
+        //    {
+        //        Debug.Log("Hit {0}" + _hits);
+        //        if (_hurtbox.Active)
+        //        {
+        //            // Generate HitData
+        //            _hitData = new HitData
+        //            {
+        //                damage = m_hitResponder == null ? 0 : m_hitResponder.Damage,
+        //                hurtBox = _hurtbox,
+        //                hitDetector = this
+        //            };
+
+        //            // Validate a response
+        //            if (_hitData.Validate())
+        //            {
+        //                _hitData.hitDetector.hitResponder?.Response(_hitData);
+        //                _hitData.hurtBox.hurtResponder?.Response(_hitData);
+        //            }
+        //        }
+        //    }
+        //}
+
+    }
+}
+
+/* File 3 Hurtbox.cs */
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Hurtbox : MonoBehaviour, IHurtbox
+{
+    [SerializeField] private bool m_active = true;
+    [SerializeField] private GameObject m_owner = null;
+    private IHurtResponder m_hurtResponder;
+
+    public bool Active { get => m_active; }
+    public GameObject Owner { get => m_owner; }
+
+    public Transform Transform { get => transform; }
+
+    public IHurtResponder hurtResponder { get => m_hurtResponder; set => m_hurtResponder = value; }
+
+    public bool Checkhit(HitData hitData)
+    {
+        if (m_hurtResponder == null)
+            Debug.Log("No responder");
+
+        return true;
+    }
+}
+
+/* File 4 Hitresponder.cs */
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Hitresponder : MonoBehaviour, IHitResponder
+{
+    [SerializeField] private bool m_attack;
+    [SerializeField] private int m_damange = 10;
+    [SerializeField] private Hitbox m_hitbox;
+
+    public int Damage { get => m_damange; }
+
+
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        m_hitbox.hitResponder = this;
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        if(m_attack)
+        {
+            // Debug.Log("Collided and hit");
+            // m_hitbox.CheckHit();
+        }
+    }
+
+    public bool CheckHit(HitData hitData)
+    {
+        Debug.Log("Hit for " + hitData.damage);
+        return true;
+    }
+
+    public void Response(HitData hitData)
+    {
+        // Implement Response to      
+    }
+}
+
+/* File 5 Hurtresponder.cs */
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Hurtresponder : MonoBehaviour, IHurtResponder
+{
+    [SerializeField] private bool m_targetable = true;
+    //[SerializeField] private Transform m_targetTransform;
+    //[SerializeField] private Rigidbody m_rigidbody;
+
+    private List<Hurtbox> m_hurtboxes = new List<Hurtbox>();
+    public bool CheckHit(HitData hitData)
+    {
+        return true;
+    }
+
+    public void Response(HitData hitData)
+    {
+        Debug.Log("hurt response");
+    }
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        m_hurtboxes = new List<Hurtbox>(GetComponentsInChildren<Hurtbox>());
+        foreach(Hurtbox _hurtbox in m_hurtboxes)
+        {
+            _hurtbox.hurtResponder = this;
+        }
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        
+    }
+}
